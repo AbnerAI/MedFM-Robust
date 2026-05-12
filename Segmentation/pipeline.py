@@ -1,0 +1,1016 @@
+#!/usr/bin/env python3
+# pipeline.py - Fixed version of general segmentation model adversarial attack and evaluation pipeline
+import os
+import json
+import time
+import argparse
+import torch
+import numpy as np
+import cv2
+import pandas as pd
+import matplotlib.pyplot as plt
+from datetime import datetime
+from typing import Tuple, Dict, Any, Optional, List
+from pathlib import Path
+
+from model_zoo import create_model, list_available_models
+
+class share_var:
+    debug_custom_number = 30
+
+local_share_var = share_var()
+
+def scale_bbox_to_256(bbox: list, original_size: tuple) -> list:
+    """Scale bounding box to 256x256 (pure mathematical calculation, no model type checking)."""
+    if bbox is None:
+        return None
+
+    orig_h, orig_w = original_size
+    scale_h = 256 / orig_h
+    scale_w = 256 / orig_w
+
+    scaled_bbox = [
+        bbox[0] * scale_w,  # x1
+        bbox[1] * scale_h,  # y1
+        bbox[2] * scale_w,  # x2
+        bbox[3] * scale_h   # y2
+    ]
+
+    print(f"[BBOX] Scaling {bbox} -> {[round(x, 1) for x in scaled_bbox]}")
+
+    return scaled_bbox
+
+def validate_image_mask_correspondence(img_path, mask_path, base_name):
+    """
+    Strictly validate image and mask size correspondence.
+    Raises exception if they don't match.
+    """
+    import cv2
+    import os
+
+    # Read original sizes of image and mask
+    img = cv2.imread(img_path)
+    mask = cv2.imread(mask_path, 0)
+
+    if img is None:
+        raise FileNotFoundError(f"[ERROR] Cannot read image file: {img_path}")
+    if mask is None:
+        raise FileNotFoundError(f"[ERROR] Cannot read mask file: {mask_path}")
+
+    img_size = img.shape[:2]  # (H, W)
+    mask_size = mask.shape    # (H, W)
+
+    print(f"[CHECK] {base_name}: image{img_size} vs mask{mask_size}")
+
+    # Strict size matching check
+    if img_size != mask_size:
+        error_msg = f"""
+        [ERROR] Data inconsistency error!
+           Image: {os.path.basename(img_path)} - Size: {img_size}
+           Mask: {os.path.basename(mask_path)} - Size: {mask_size}
+
+        [ALERT] Perturbed image and ground truth mask sizes don't match!
+           This indicates they come from different data sources, leading to incorrect evaluation results.
+
+        [FIX] Suggested solutions:
+           1. Check the perturbation dataset generation process
+           2. Ensure perturbed images and masks come from the same original dataset
+           3. Regenerate perturbation dataset with matching sizes
+
+        Program stopped to avoid producing incorrect results.
+        """
+        raise ValueError(error_msg)
+
+    print(f"[OK] Size matched")
+    return img_size
+
+# -------------------- Argument Parsing --------------------
+def get_parser():
+    parser = argparse.ArgumentParser(description="General segmentation model adversarial attack and evaluation")
+    parser.add_argument("--model_config", default="model_config.json", help="Model config file path")
+    parser.add_argument("--dataset_config", default="dataset_config.json", help="Dataset config file path")
+    parser.add_argument("--model_name", default="medsam", help=f"Model to use, supported: {list_available_models()}")
+    parser.add_argument("--dataset_name", nargs='+', default=["isic_2016"], help="Dataset name(s); both mode requires 2 (original perturbed)")
+    parser.add_argument("--attack_types", nargs="+", default=["fgsm", "pgd"], help="Adversarial attack types")
+    parser.add_argument("--levels", nargs="+", type=int, default=[1, 2, 3, 4, 5], help="Perturbation levels")
+    parser.add_argument("--targeted", action="store_true", help="Whether to use targeted adversarial perturbation")
+    parser.add_argument("--eval_mode", choices=["adversarial", "perturbation", "both"], default="adversarial", help="Evaluation mode")
+    parser.add_argument("--output_root", default=None, help="Output root directory, uses config setting if empty")
+    parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu", help="Compute device")
+    parser.add_argument("--debug", action="store_true", help="Enable debug mode")
+    parser.add_argument("--save_visualizations", action="store_true", default=True, help="Save visualization results (enabled by default)")
+    parser.add_argument("--no_visualizations", action="store_true", help="Disable visualization saving")
+    parser.add_argument("--max_images", type=int, default=None, help="Limit number of images to process (for testing, default processes all)")
+    parser.add_argument("--perturbation_path", default="/mnt/fast/nobackup/scratch4weeks/xxx/data/perturbed_datasets", help="Perturbation dataset path (for perturbation mode)")
+    parser.add_argument("--finetune_checkpoint", type=str, default=None, help="Fine-tuned model checkpoint path (optional, uses original pretrained model if not provided)")
+    parser.add_argument("--data_split_json", type=str, default=None, help="Data split file path (data_split.json generated by finetune.py), for evaluating test set only")
+    return parser
+
+# -------------------- Config Loader --------------------
+class ConfigLoader:
+    def __init__(self, model_config_path: str, dataset_config_path: str):
+        self.model_config = self._load_json_with_fallback(model_config_path, self._get_default_model_config())
+        self.dataset_config = self._load_json_with_fallback(dataset_config_path, self._get_default_dataset_config())
+
+    def _load_json_with_fallback(self, path: str, fallback_config: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            if os.path.exists(path):
+                with open(path, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+        except Exception:
+            pass
+        return fallback_config
+
+    def _get_default_model_config(self) -> Dict[str, Any]:
+        return {
+            "medsam": {
+                "name": "medsam",
+                "repo_id": "flaviagiammarino/medsam-vit-base",
+                "local_path": None,
+                "prompt_type": "box",
+                "prompt_required": True,
+                "image_size": 1024,
+                "normalize_mean": [0.485, 0.456, 0.406],
+                "normalize_std": [0.229, 0.224, 0.225],
+                "notes": "Medical SAM, requires box prompt"
+            }
+        }
+
+    def _get_default_dataset_config(self) -> Dict[str, Any]:
+        return {
+            "datasets": {
+                "isic_2016": {
+                    "name": "ISIC 2016",
+                    "resized_img_dir": "./data/images",
+                    "resized_mask_dir": "./data/masks",
+                    "bbox_json": "./data/bbox_coordinates.json",
+                    "image_extensions": [".jpg", ".npy"],
+                    "mask_suffix": "_Segmentation.png"
+                }
+            },
+            "output_config": {
+                "base_output_dir": "./results",
+                "subdirs": {
+                    "segmentation": "segmentation",
+                    "adversarial_full": "adversarial/full_image",
+                    "adversarial_local": "adversarial/local",
+                    "perturbation_eval": "perturbation_evaluation",
+                    "results": "results",
+                    "visualizations": "visualizations"
+                },
+                "auto_create_timestamp_dir": True,
+                "save_formats": ["csv"],
+                "auto_save_interval": 5
+            }
+        }
+
+    def get_model_config(self, model_name: str) -> Dict[str, Any]:
+        return self.model_config.get(model_name, list(self.model_config.values())[0])
+
+    def get_dataset_config(self, dataset_name: str) -> Dict[str, Any]:
+        datasets = self.dataset_config.get("datasets", {})
+        perturbation_datasets = self.dataset_config.get("perturbation_datasets", {})
+        if dataset_name in datasets:
+            return datasets[dataset_name]
+        if dataset_name in perturbation_datasets:
+            return perturbation_datasets[dataset_name]
+        return list(datasets.values())[0] if datasets else self._get_default_dataset_config()["datasets"]["isic_2016"]
+
+    def get_output_config(self) -> Dict[str, Any]:
+        return self.dataset_config.get("output_config", self._get_default_dataset_config()["output_config"])
+
+# -------------------- Evaluation Metrics --------------------
+def calculate_iou(pred_mask, gt_mask):
+    pred_bin = (pred_mask > 0.5).astype(np.float32)
+    gt_bin = (gt_mask > 0.5).astype(np.float32)
+    intersection = np.sum(pred_bin * gt_bin)
+    union = np.sum(pred_bin) + np.sum(gt_bin) - intersection
+    return intersection / union if union != 0 else 1.0 if np.sum(pred_bin) == 0 else 0.0
+
+def calculate_dice(pred_mask, gt_mask):
+    pred_bin = (pred_mask > 0.5).astype(np.float32)
+    gt_bin = (gt_mask > 0.5).astype(np.float32)
+    intersection = np.sum(pred_bin * gt_bin)
+    total = np.sum(pred_bin) + np.sum(gt_bin)
+    return (2.0 * intersection) / total if total != 0 else 1.0 if intersection == 0 else 0.0
+
+def evaluate_segmentation(pred_mask, gt_mask):
+    if isinstance(pred_mask, torch.Tensor):
+        pred_mask = pred_mask.detach().cpu().numpy()
+    if isinstance(gt_mask, torch.Tensor):
+        gt_mask = gt_mask.detach().cpu().numpy()
+    pred_mask = pred_mask.squeeze()
+    gt_mask = gt_mask.squeeze()
+    return calculate_iou(pred_mask, gt_mask), calculate_dice(pred_mask, gt_mask)
+
+# -------------------- Adversarial Attack Implementation --------------------
+LEVEL_TO_EPSILON = {1: 2/255, 2: 4/255, 3: 6/255, 4: 8/255, 5: 10/255}
+LEVEL_TO_ITERS = {1: 3, 2: 5, 3: 7, 4: 10, 5: 15}
+
+def fgsm_attack(model, img_tensor, prompt, mask_tensor, epsilon):
+    img_adv = img_tensor.clone().detach().requires_grad_(True).to(model.device)
+    model.train()
+    pred_masks, loss = model(img_adv, prompt, mask_tensor)
+    assert loss is not None, "[FGSM] Model did not return loss, cannot compute adversarial attack"
+    model.zero_grad()
+    loss.backward()
+    grad_sign = img_adv.grad.sign()
+    result = torch.clamp(img_adv + epsilon * grad_sign, 0, 1)
+    return result.detach()
+
+def pgd_attack(model, img_tensor, prompt, mask_tensor, epsilon, iters=10):
+    img_adv = img_tensor.clone().detach().to(model.device)
+    img_adv = torch.clamp(img_adv + torch.empty_like(img_adv).uniform_(-epsilon, epsilon), 0, 1)
+    model.train()
+    for _ in range(iters):
+        img_adv = img_adv.clone().detach().requires_grad_(True)
+        pred_masks, loss = model(img_adv, prompt, mask_tensor)
+        assert loss is not None, "[PGD] Model did not return loss, cannot compute adversarial attack"
+        model.zero_grad()
+        loss.backward()
+        grad_sign = img_adv.grad.sign()
+        img_adv = torch.clamp(img_adv + (epsilon / iters) * grad_sign, img_tensor - epsilon, img_tensor + epsilon)
+        img_adv = torch.clamp(img_adv, 0, 1).detach()
+    return img_adv
+
+# -------------------- Data Loading --------------------
+def load_image(img_path: str, model_name: str = None) -> Tuple[np.ndarray, torch.Tensor, str]:
+    if img_path.endswith(".npy"):
+        img_array = np.load(img_path)
+        if len(img_array.shape) == 2:
+            img_array = np.stack([img_array] * 3, axis=-1)
+        img = img_array.astype(np.uint8)
+    else:
+        img = cv2.imread(img_path)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+    original_size = img.shape[:2]
+    # SAM-Med2D special handling: resize to 256x256
+    if model_name == "sammed2d":
+        img = cv2.resize(img, (256, 256), interpolation=cv2.INTER_LINEAR)
+        print(f"[SAM-Med2D] Image resized: {original_size} -> (256, 256)")
+
+    img_tensor = torch.from_numpy(img).permute(2, 0, 1).float() / 255.0
+    img_tensor = img_tensor.unsqueeze(0)
+    return img, img_tensor, os.path.basename(img_path), original_size
+
+def load_mask(mask_path: str, model_name: str = None) -> torch.Tensor:
+    mask = cv2.imread(mask_path, 0)
+    mask = (mask > 0).astype(np.float32)
+    if model_name == "sammed2d":
+        mask = cv2.resize(mask, (256, 256), interpolation=cv2.INTER_NEAREST)
+
+    mask_tensor = torch.from_numpy(mask).unsqueeze(0).unsqueeze(0)
+    return mask_tensor
+
+def load_image_sammed2d(img_path: str) -> Tuple[np.ndarray, torch.Tensor, str]:
+    """SAM-Med2D specific loading: maintain exact same data path as standalone experiment."""
+    # Load uint8 image (exactly same as standalone experiment)
+    if img_path.endswith(".npy"):
+        img_array = np.load(img_path)
+        if len(img_array.shape) == 2:
+            img_array = np.stack([img_array] * 3, axis=-1)
+        img_np = img_array.astype(np.uint8)
+    else:
+        img = cv2.imread(img_path)
+        img_np = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+    # Resize to 256x256 (exactly same as standalone experiment)
+    img_np = cv2.resize(img_np, (256, 256), interpolation=cv2.INTER_LINEAR)
+
+    # Convert to [0,1] tensor for adversarial attack gradient computation
+    img_tensor = torch.from_numpy(img_np).permute(2, 0, 1).float() / 255.0
+    img_tensor = img_tensor.unsqueeze(0)
+
+    return img_np, img_tensor, os.path.basename(img_path)
+
+# -------------------- Results Recorder --------------------
+class IoURecorder:
+    def __init__(self, save_path: str, auto_save_interval: int = 5):
+        self.results = []
+        self.save_path = save_path
+        self.auto_save_interval = auto_save_interval
+        self.save_counter = 0
+        self.processed_images = set()
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        print(f"[SAVE] Results will be saved to: {save_path}")
+
+    def add_result(self, **kwargs):
+        kwargs["timestamp"] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        self.results.append(kwargs)
+        if "image_name" in kwargs:
+            self.processed_images.add(kwargs["image_name"])
+        self.save_counter += 1
+        if self.auto_save_interval > 0 and self.save_counter % self.auto_save_interval == 0:
+            self.save_results(quiet=True)
+
+    def save_results(self, quiet=False):
+        if not self.results:
+            if not quiet:
+                print("[WARN] No results to save")
+            return
+        df = pd.DataFrame(self.results)
+        if self.save_path.endswith('.csv'):
+            df.to_csv(self.save_path, index=False, float_format='%.6f')
+        elif self.save_path.endswith('.xlsx'):
+            with pd.ExcelWriter(self.save_path, engine='openpyxl') as writer:
+                df.to_excel(writer, sheet_name='Results', index=False, float_format='%.6f')
+        if not quiet:
+            print(f"[OK] Results saved to: {self.save_path}")
+
+# -------------------- Visualization Saving --------------------
+def save_segmentation_result(img, bbox, pred_mask, save_path, iou_score=None, dice_score=None):
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    fig, ax = plt.subplots(1, 2, figsize=(12, 5))
+    ax[0].imshow(img)
+    if bbox is not None:
+        x0, y0, x1, y1 = bbox
+        ax[0].add_patch(plt.Rectangle((x0, y0), x1 - x0, y1 - y0, edgecolor="blue", facecolor="none", lw=2))
+    ax[0].set_title("Input + Bounding Box", fontsize=12)
+    ax[0].axis("off")
+    ax[1].imshow(img)
+    ax[1].imshow(pred_mask.squeeze(), alpha=0.5, cmap="jet")
+    title = "Segmentation Result"
+    if iou_score is not None and dice_score is not None:
+        title += f"\nIoU: {iou_score:.4f}, Dice: {dice_score:.4f}"
+    ax[1].set_title(title, fontsize=12)
+    ax[1].axis("off")
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300, bbox_inches="tight")
+    plt.close()
+    print(f"[IMG] Saved segmentation result: {os.path.basename(save_path)}")
+
+def save_adversarial_result(img, adv_img, bbox, pred_mask, save_path,
+                            original_iou=None, adversarial_iou=None, iou_drop=None,
+                            original_dice=None, adversarial_dice=None, dice_drop=None):
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    fig, ax = plt.subplots(1, 3, figsize=(18, 5))
+    ax[0].imshow(img)
+    if bbox is not None:
+        x0, y0, x1, y1 = bbox
+        ax[0].add_patch(plt.Rectangle((x0, y0), x1 - x0, y1 - y0, edgecolor="blue", facecolor="none", lw=2))
+    title_orig = "Original Image"
+    if original_iou is not None:
+        title_orig += f"\nIoU: {original_iou:.4f}, Dice: {original_dice:.4f}"
+    ax[0].set_title(title_orig, fontsize=11)
+    ax[0].axis("off")
+    ax[1].imshow(adv_img)
+    ax[1].set_title("Adversarial Image", fontsize=11)
+    ax[1].axis("off")
+    ax[2].imshow(adv_img)
+    ax[2].imshow(pred_mask.squeeze(), alpha=0.5, cmap="jet")
+    title_adv = "Adversarial Segmentation"
+    if adversarial_iou is not None:
+        title_adv += f"\nIoU: {adversarial_iou:.4f}, Dice: {adversarial_dice:.4f}"
+    if iou_drop is not None:
+        title_adv += f"\nDrop: IoU {iou_drop:.4f}, Dice {dice_drop:.4f}"
+    ax[2].set_title(title_adv, fontsize=11)
+    ax[2].axis("off")
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300, bbox_inches="tight")
+    plt.close()
+    print(f"[IMG] Saved adversarial result: {os.path.basename(save_path)}")
+
+# -------------------- Main Pipeline --------------------
+def setup_output_directories(output_config: Dict[str, Any], output_root: Optional[str] = None, dataset_name: str = ""):
+    base_dir = output_root or output_config.get("base_output_dir", "./results")
+
+    # Only auto-create timestamp directory when output_root is not specified
+    if output_root is None and output_config.get("auto_create_timestamp_dir", True):
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        dir_name = f"{timestamp}_{dataset_name}" if dataset_name else timestamp
+        base_dir = os.path.join(base_dir, dir_name)
+
+    os.makedirs(base_dir, exist_ok=True)
+    print(f"[DIR] Created output directory: {base_dir}")
+    subdirs = {}
+    for key, subdir in output_config.get("subdirs", {}).items():
+        path = os.path.join(base_dir, subdir)
+        os.makedirs(path, exist_ok=True)
+        subdirs[key] = path
+        print(f"   [SUBDIR] {key}: {path}")
+    return base_dir, subdirs
+
+def collect_dataset_images(dataset_config: Dict[str, Any]):
+    img_dir = dataset_config["resized_img_dir"]
+    mask_dir = dataset_config["resized_mask_dir"]
+    bbox_json = dataset_config["bbox_json"]
+    extensions = dataset_config.get("image_extensions", [".jpg", ".npy",".png"])
+    mask_suffix = dataset_config.get("mask_suffix", "_Segmentation.png")
+
+    print(f"[SEARCH] Finding dataset:")
+    print(f"   Image directory: {img_dir}")
+    print(f"   Mask directory: {mask_dir}")
+    print(f"   Bbox file: {bbox_json}")
+
+    if not os.path.exists(img_dir) or not os.path.exists(mask_dir):
+        print("[ERROR] Image or mask directory does not exist")
+        return []
+
+    bbox_dict = {}
+    if os.path.exists(bbox_json):
+        with open(bbox_json, 'r') as f:
+            bbox_dict = json.load(f)
+        print(f"[OK] Loaded bbox data: {len(bbox_dict)} entries")
+
+    valid_images = []
+    for img_name in os.listdir(img_dir):
+        if not any(img_name.endswith(ext) for ext in extensions):
+            continue
+        base_name = os.path.splitext(img_name)[0]
+        mask_name = f"{base_name}{mask_suffix}"
+        mask_path = os.path.join(mask_dir, mask_name)
+        if not os.path.exists(mask_path):
+            continue
+        if bbox_dict and mask_name not in bbox_dict:
+            continue
+        valid_images.append({
+            "img_name": img_name,
+            "base_name": base_name,
+            "mask_name": mask_name,
+            "img_path": os.path.join(img_dir, img_name),
+            "mask_path": mask_path,
+            "bbox": bbox_dict.get(mask_name, None)
+        })
+    print(f"[OK] Found valid image pairs: {len(valid_images)}")
+    return valid_images
+
+def run_adversarial_evaluation(model, valid_images, args, output_dirs, recorder):
+    print(f"\n[START] Starting adversarial attack evaluation...")
+    processed_count = 0
+    start_time = time.time()
+    images_to_process = valid_images
+    for img_info in images_to_process:
+        if args.model_name == "sammed2d":
+            img_np, img_tensor, filename = load_image_sammed2d(img_info["img_path"])
+        else:
+            img_np, img_tensor, filename, _ = load_image(img_info["img_path"], args.model_name)
+
+        mask_tensor = load_mask(img_info["mask_path"], args.model_name)
+        img_tensor = img_tensor.to(args.device)
+        gt_mask = mask_tensor.squeeze().numpy()
+        bbox = img_info["bbox"] if model.prompt_required else None
+
+        # Debug info for single image processing
+        print("===", img_info["base_name"], "===")
+        print("bbox from json :", img_info["bbox"])
+        print("img range      :", img_tensor.min().item(), "~", img_tensor.max().item())
+        print("mask range     :", mask_tensor.min().item(), "~", mask_tensor.max().item())
+
+        image_start_time = time.time()
+        with torch.no_grad():
+            pred_mask = model(img_tensor, bbox)
+            original_iou, original_dice = evaluate_segmentation(pred_mask, gt_mask)
+
+        recorder.add_result(
+            image_name=img_info["base_name"],
+            attack_type=None,
+            level=None,
+            original_iou=original_iou,
+            original_dice=original_dice,
+            processing_time=time.time() - image_start_time
+        )
+
+        if not args.no_visualizations:
+            pred_mask_binary = pred_mask.squeeze().cpu().numpy() > 0.5
+            seg_save_path = os.path.join(output_dirs["segmentation"], f"{img_info['base_name']}_seg.png")
+            save_segmentation_result(img_np, bbox, pred_mask_binary, seg_save_path, original_iou, original_dice)
+
+        for attack_type in args.attack_types:
+            for level in args.levels:
+                epsilon = LEVEL_TO_EPSILON[level]
+                iters = LEVEL_TO_ITERS[level]
+                if attack_type == "fgsm":
+                    adv_tensor = fgsm_attack(model, img_tensor, bbox, mask_tensor, epsilon)
+                else:
+                    adv_tensor = pgd_attack(model, img_tensor, bbox, mask_tensor, epsilon, iters)
+
+                with torch.no_grad():
+                    adv_pred = model(adv_tensor, bbox)
+                    adv_iou, adv_dice = evaluate_segmentation(adv_pred, gt_mask)
+                    iou_drop = original_iou - adv_iou
+                    dice_drop = original_dice - adv_dice
+
+                recorder.add_result(
+                    image_name=img_info["base_name"],
+                    attack_type=attack_type,
+                    level=level,
+                    epsilon=epsilon,
+                    iterations=iters if attack_type == "pgd" else 1,
+                    original_iou=original_iou,
+                    adversarial_iou=adv_iou,
+                    iou_drop=iou_drop,
+                    original_dice=original_dice,
+                    adversarial_dice=adv_dice,
+                    dice_drop=dice_drop
+                )
+
+                if not args.no_visualizations:
+                    adv_pred_binary = adv_pred.squeeze().cpu().numpy() > 0.5
+                    adv_np = (adv_tensor.squeeze().permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
+                    adv_save_path = os.path.join(output_dirs["adversarial_full"], attack_type, str(level), f"{img_info['base_name']}_adv.png")
+                    save_adversarial_result(img_np, adv_np, bbox, adv_pred_binary, adv_save_path,
+                                            original_iou, adv_iou, iou_drop, original_dice, adv_dice, dice_drop)
+
+        processed_count += 1
+
+    recorder.save_results()
+    print(f"\n[DONE] Adversarial attack evaluation complete! Processed images: {processed_count}, Results file: {recorder.save_path}")
+
+# -------------------- Perturbation Dataset Evaluation --------------------
+def extract_perturbation_info(img_path: str):
+    parts = img_path.replace('\\', '/').split('/')
+    filename = os.path.basename(img_path)
+    base_name = os.path.splitext(filename)[0]
+    if len(parts) >= 3:
+        level_str = parts[-2]
+        perturbation_type = parts[-3]
+        if level_str.isdigit():
+            level = int(level_str)
+            if 1 <= level <= 5:
+                return base_name, perturbation_type, level
+    return base_name, None, None
+
+def evaluate_perturbation_dataset(pert_dataset_name, perturbation_path, model, args, output_dirs):
+    print(f"\n[SEARCH] Starting perturbation dataset evaluation: {perturbation_path}")
+    config_loader = ConfigLoader(args.model_config, args.dataset_config)
+    original_dataset_config = config_loader.get_dataset_config(pert_dataset_name[:-10])
+    resized_img_dir = original_dataset_config["resized_img_dir"]
+    resized_mask_dir = original_dataset_config["resized_mask_dir"]
+    bbox_json = original_dataset_config["bbox_json"]
+
+    with open(bbox_json, "r") as f:
+        bbox_dict = json.load(f)
+
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    perturbation_results_file = os.path.join(output_dirs["results"], f"perturbation_results_{timestamp}.csv")
+    perturbation_recorder = IoURecorder(perturbation_results_file, 10)
+    PERTURBATION_OUTPUT = os.path.join(output_dirs["perturbation_eval"])
+    os.makedirs(PERTURBATION_OUTPUT, exist_ok=True)
+
+    jpg_files = []
+
+    # Support both .jpg and .png formats (segmentation_generate_perb_all_V9_adpative_efficient.py generates .png)
+    supported_extensions = ('.jpg', '.jpeg', '.png')
+    for root, dirs, files in os.walk(perturbation_path):
+        for file in files:
+            if file.lower().endswith(supported_extensions):
+                jpg_files.append(os.path.join(root, file))
+    print(f"[STATS] Found {len(jpg_files)} perturbed images (supported formats: {supported_extensions})")
+
+    # If data split file is provided, only evaluate test set
+    if args.data_split_json and os.path.exists(args.data_split_json):
+        with open(args.data_split_json, 'r') as f:
+            split_info = json.load(f)
+        test_files = set(split_info.get("test_files", []))
+        original_count = len(jpg_files)
+        # Filter by extracting base_name from file path
+        filtered_files = []
+        for img_path in jpg_files:
+            base_name, _, _ = extract_perturbation_info(img_path)
+            if base_name in test_files:
+                filtered_files.append(img_path)
+        jpg_files = filtered_files
+        print(f"   [FILTER] Filtered by data split file: {original_count} -> {len(jpg_files)} (test set only)")
+
+    processed_count = 0
+    failed_count = 0
+    start_time = time.time()
+
+    if args.debug:
+        print("[DEBUG] Debug mode: smart sampling to cover all perturbation types")
+
+        from collections import defaultdict
+        grouped_files = defaultdict(lambda: defaultdict(list))
+
+        # Extract and group
+        for img_path in jpg_files:
+            base_name, ptype, level = extract_perturbation_info(img_path)
+            if ptype and level:
+                grouped_files[ptype][level].append(img_path)
+
+        # Take N samples from each type-level combination
+        debug_files = []
+        samples_per_combination = local_share_var.debug_custom_number  # Control quantity
+
+        for ptype in sorted(grouped_files.keys()):
+            print(f"\n  [TYPE] {ptype}:")
+            for level in sorted(grouped_files[ptype].keys()):
+                if grouped_files[ptype][level]:
+                    # Take first N images from this combination
+                    sorted_files = sorted(grouped_files[ptype][level])
+                    selected = sorted_files[:samples_per_combination]
+                    debug_files.extend(selected)
+                    print(f"     Level {level}: {len(selected)}/{len(grouped_files[ptype][level])} images")
+
+        jpg_files = debug_files
+        print(f"\n[DEBUG] Debug mode total: {len(jpg_files)} images")
+        
+    for img_path in jpg_files:
+        base_name, perturbation_type, level = extract_perturbation_info(img_path)
+        
+        if perturbation_type is None or level is None:
+            failed_count += 1
+            continue
+				
+        # mask_name = f"{base_name}_Segmentation.png"
+        mask_suffix = original_dataset_config["mask_suffix"]
+        mask_name = f"{base_name}{mask_suffix}"
+        mask_path = os.path.join(resized_mask_dir, mask_name)
+        if not os.path.exists(mask_path) or mask_name not in bbox_dict:
+            failed_count += 1
+            continue
+
+        original_bbox = bbox_dict[mask_name]
+        if args.model_name == "sammed2d":
+        	img_np, img_tensor, filename = load_image_sammed2d(img_path)
+        else:
+        	img_np, img_tensor, filename, original_size = load_image(img_path, args.model_name)
+		
+        bbox = original_bbox  # Other models use original bounding box directly
+
+        mask_tensor = load_mask(mask_path, args.model_name)
+
+        img_tensor = img_tensor.to(args.device)
+        gt_mask = mask_tensor.squeeze().numpy()
+
+        # original_img_path = os.path.join(resized_img_dir, f"{base_name}.jpg")
+        # if not os.path.exists(original_img_path):
+        #     original_img_path = os.path.join(resized_img_dir, f"{base_name}.npy")
+
+        # Dynamically find based on config
+        image_extensions = original_dataset_config["image_extensions"]
+        original_img_path = None
+        for ext in image_extensions:
+            ext_with_dot = ext if ext.startswith('.') else f'.{ext}'
+            test_path = os.path.join(resized_img_dir, f"{base_name}{ext_with_dot}")
+            if os.path.exists(test_path):
+                original_img_path = test_path
+                break
+				
+        original_iou = original_dice = None
+        if os.path.exists(original_img_path):
+            _, original_img_tensor, _, _ = load_image(original_img_path, args.model_name)
+            original_img_tensor = original_img_tensor.to(args.device)
+            with torch.no_grad():
+                original_pred = model(original_img_tensor, bbox)
+                original_iou, original_dice = evaluate_segmentation(original_pred, gt_mask)
+
+        image_start_time = time.time()
+        with torch.no_grad():
+            pred_mask = model(img_tensor, bbox)
+            perturb_iou, perturb_dice = evaluate_segmentation(pred_mask, gt_mask)
+        processing_time = time.time() - image_start_time
+
+        iou_drop = original_iou - perturb_iou if original_iou is not None else None
+        dice_drop = original_dice - perturb_dice if original_dice is not None else None
+
+        perturbation_recorder.add_result(
+            image_name=base_name,
+            attack_type=perturbation_type,
+            level=level,
+            epsilon=None,
+            iterations=None,
+            original_iou=original_iou,
+            adversarial_iou=perturb_iou,
+            iou_drop=iou_drop,
+            original_dice=original_dice,
+            adversarial_dice=perturb_dice,
+            dice_drop=dice_drop,
+            processing_time=processing_time
+        )
+
+        if not args.no_visualizations:
+            pred_mask_binary = pred_mask.squeeze().cpu().numpy() > 0.5
+            save_dir = os.path.join(PERTURBATION_OUTPUT, perturbation_type, str(level))
+            os.makedirs(save_dir, exist_ok=True)
+            save_path = os.path.join(save_dir, f"{base_name}_perturbation.png")
+            save_segmentation_result(img_np, bbox, pred_mask_binary, save_path, perturb_iou, perturb_dice)
+
+        processed_count += 1
+        if processed_count % 20 == 0:
+            print(f"   Processed: {processed_count}/{len(jpg_files)} ({perturbation_type}-L{level}, IoU: {perturb_iou:.3f})")
+
+    perturbation_recorder.save_results()
+    total_time = time.time() - start_time
+    print(f"\n[OK] Perturbation dataset evaluation complete! Success: {processed_count}, Failed: {failed_count}, Results file: {perturbation_results_file}")
+
+    return perturbation_results_file
+
+# -------------------- Main Entry --------------------
+def main():
+    args = get_parser().parse_args()
+    if args.no_visualizations:
+        args.save_visualizations = False
+
+    print(f"[START] General segmentation model adversarial attack system starting")
+    print(f"   Device: {args.device}, Model: {args.model_name}, Eval mode: {args.eval_mode}")
+
+    config_loader = ConfigLoader(args.model_config, args.dataset_config)
+    model_cfg = config_loader.get_model_config(args.model_name)
+    output_cfg = config_loader.get_output_config()
+    model = create_model(args.model_name, args.device, model_cfg)
+
+    # Load fine-tuned weights (fixed version - supports LoRA)
+    if args.finetune_checkpoint:
+        if os.path.exists(args.finetune_checkpoint):
+            print(f"\n{'='*70}")
+            print(f"[LOAD] Loading fine-tuned weights: {args.finetune_checkpoint}")
+            print(f"{'='*70}")
+
+            checkpoint = torch.load(args.finetune_checkpoint, map_location=args.device)
+            ft_config = checkpoint.get("config", {})
+            ft_strategy = ft_config.get("strategy", "unknown")
+
+            print(f"   Checkpoint strategy: {ft_strategy}")
+            print(f"   Checkpoint Epoch: {checkpoint.get('epoch', 'N/A')}")
+
+            # If LoRA fine-tuning, need to rebuild LoRA structure first
+            if ft_strategy == "lora":
+                print(f"\n   [LORA] Detected LoRA checkpoint, rebuilding LoRA structure...")
+                try:
+                    from finetune_utils import FinetuneConfig, setup_finetune
+
+                    # Fully restore LoRA config (including target_modules and dropout)
+                    lora_config = FinetuneConfig(
+                        strategy="lora",
+                        lora_r=ft_config.get("lora_r", 8),
+                        lora_alpha=ft_config.get("lora_alpha", 16),
+                        lora_dropout=ft_config.get("lora_dropout", 0.1),
+                        lora_target_modules=ft_config.get("lora_target_modules", ["q_proj", "v_proj"]),
+                    )
+                    print(f"   LoRA config: r={lora_config.lora_r}, alpha={lora_config.lora_alpha}")
+                    print(f"   target_modules={lora_config.lora_target_modules}")
+                    model = setup_finetune(model, args.model_name, lora_config)
+                    print(f"   [OK] LoRA structure rebuilt successfully")
+                except Exception as e:
+                    print(f"   [ERROR] LoRA structure rebuild failed: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    print(f"   [WARN] Falling back to direct loading, LoRA weights may be lost!")
+
+            # Load weights
+            state_dict = checkpoint.get("model_state_dict", checkpoint)
+
+            # If LoRA, handle PEFT model key name mapping issues
+            if ft_strategy == "lora":
+                # Get current model key names
+                model_keys = set(model.state_dict().keys())
+                checkpoint_keys = set(state_dict.keys())
+
+                # Check if key name conversion is needed
+                # PEFT model may have base_model.model. prefix
+                needs_mapping = False
+                if any('base_model.model.' in k for k in model_keys) and not any('base_model.model.' in k for k in checkpoint_keys):
+                    needs_mapping = True
+                    print(f"   [LORA] Detected key name mismatch, performing PEFT key mapping...")
+                    # Keys in checkpoint -> add base_model.model. prefix
+                    new_state_dict = {}
+                    for k, v in state_dict.items():
+                        if k.startswith('model.'):
+                            # model.xxx -> base_model.model.xxx (remove leading model.)
+                            new_key = 'base_model.' + k
+                        else:
+                            new_key = 'base_model.model.' + k
+                        new_state_dict[new_key] = v
+                    state_dict = new_state_dict
+                elif not any('base_model.model.' in k for k in model_keys) and any('base_model.model.' in k for k in checkpoint_keys):
+                    needs_mapping = True
+                    print(f"   [LORA] Detected key name mismatch, performing reverse PEFT key mapping...")
+                    # Checkpoint has base_model.model. prefix -> remove it
+                    new_state_dict = {}
+                    for k, v in state_dict.items():
+                        if k.startswith('base_model.model.'):
+                            new_key = k.replace('base_model.model.', 'model.')
+                        elif k.startswith('base_model.'):
+                            new_key = k.replace('base_model.', '')
+                        else:
+                            new_key = k
+                        new_state_dict[new_key] = v
+                    state_dict = new_state_dict
+
+            # Analyze loading status
+            missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
+
+            print(f"\n   [STATS] Weight loading analysis:")
+            print(f"      Missing keys: {len(missing_keys)}")
+            print(f"      Unexpected keys: {len(unexpected_keys)}")
+
+            if len(missing_keys) > 0:
+                print(f"      Missing examples: {missing_keys[:3]}")
+            if len(unexpected_keys) > 0:
+                print(f"      Unexpected examples: {unexpected_keys[:3]}")
+
+            # LoRA special check
+            if ft_strategy == "lora":
+                lora_loaded = sum(1 for k in state_dict.keys() if 'lora' in k.lower())
+                lora_missing = sum(1 for k in missing_keys if 'lora' in k.lower())
+                print(f"      LoRA params: {lora_loaded} in checkpoint, {lora_missing} not loaded")
+                if lora_missing > 0:
+                    print(f"      [WARN] Warning: LoRA weights not fully loaded!")
+
+            print(f"\n[OK] Fine-tuned weights loaded successfully")
+
+            # Ensure model is on correct device (especially for manual LoRA case)
+            model = model.to(args.device)
+            print(f"   Model moved to device: {args.device}")
+
+            if "metrics" in checkpoint:
+                metrics = checkpoint["metrics"]
+                print(f"   Training metrics: Dice={metrics.get('dice', 'N/A'):.4f}, IoU={metrics.get('iou', 'N/A'):.4f}")
+            print(f"{'='*70}\n")
+        else:
+            print(f"[WARN] Fine-tune checkpoint does not exist: {args.finetune_checkpoint}, using original pretrained model")
+
+    # Split dataset_name into list
+    dataset_names = [args.dataset_name] if isinstance(args.dataset_name, str) else args.dataset_name
+
+    # Both mode requires 2 names
+    if args.eval_mode == "both":
+        if len(dataset_names) != 2:
+            print("[ERROR] Both mode requires 2 dataset names: --dataset_name original perturbed")
+            return
+        adv_dataset_name, pert_dataset_name = dataset_names
+    else:
+        adv_dataset_name = pert_dataset_name = dataset_names[0]
+
+    if args.eval_mode == "both":
+        combined_name = f"{adv_dataset_name}_vs_{pert_dataset_name}_{args.model_name}"
+    else:
+        combined_name = f"{dataset_names[0]}_{args.model_name}"
+
+    base_output, output_dirs = setup_output_directories(output_cfg, args.output_root, combined_name)
+
+    # 1) Adversarial attack part
+    if args.eval_mode in ["adversarial", "both"]:
+        dataset_cfg = config_loader.get_dataset_config(adv_dataset_name)
+        print(f"\n[STATS] Collecting adversarial dataset: {adv_dataset_name}")
+        valid_images = collect_dataset_images(dataset_cfg)
+
+        # If data split file is provided, only evaluate test set
+        if args.data_split_json and os.path.exists(args.data_split_json):
+            with open(args.data_split_json, 'r') as f:
+                split_info = json.load(f)
+            test_files = set(split_info.get("test_files", []))
+            original_count = len(valid_images)
+            valid_images = [img for img in valid_images if img["base_name"] in test_files]
+            print(f"   [FILTER] Filtered by data split file: {original_count} -> {len(valid_images)} (test set only)")
+
+        if args.debug and len(valid_images) > 3:
+            valid_images = valid_images[:local_share_var.debug_custom_number]
+        if valid_images:
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            results_file = os.path.join(output_dirs["results"], f"results_adversarial_{timestamp}.csv")
+            recorder = IoURecorder(results_file, output_cfg.get("auto_save_interval", 5))
+            run_adversarial_evaluation(model, valid_images, args, output_dirs, recorder)
+            # Generate summary table
+            generate_summary_table(results_file, output_dirs["results"])
+
+    # 2) Perturbation evaluation part
+    if args.eval_mode in ["perturbation", "both"]:
+        pert_cfg = config_loader.get_dataset_config(pert_dataset_name)
+        perturbation_path = pert_cfg.get("root_path", args.perturbation_path)
+        # Need to get perturbation evaluation CSV path, modify evaluate_perturbation_dataset return value
+        perturbation_results_file = evaluate_perturbation_dataset(
+            pert_dataset_name, perturbation_path, model, args, output_dirs
+        )
+        # Generate summary table
+        if perturbation_results_file:
+            generate_summary_table(perturbation_results_file, output_dirs["results"])
+
+
+    print(f"\n[DONE] All complete! Results saved in: {base_output}")
+
+# -------------------- Summary Statistics Function --------------------
+def generate_summary_table(csv_path: str, output_dir: str):
+    """
+    Generate summary table similar to Table 1 from detailed CSV.
+    Supports both adversarial and perturbation data formats.
+    """
+    if not os.path.exists(csv_path):
+        print(f"[WARN] CSV file does not exist: {csv_path}")
+        return
+
+    print(f"\n[STATS] Generating summary statistics table...")
+    df = pd.read_csv(csv_path)
+
+    # ===== 1. Smart format detection and Clean performance calculation =====
+    clean_df = df[df['attack_type'].isna()]
+
+    if len(clean_df) > 0:
+        # Adversarial mode: has dedicated Clean rows
+        print("[INFO] Detected Adversarial mode data")
+        clean_iou = clean_df['original_iou'].mean()
+        clean_dice = clean_df['original_dice'].mean()
+        corrupted_df = df[df['attack_type'].notna()]
+    else:
+        # Perturbation mode: Clean data is in original_iou column
+        print("[INFO] Detected Perturbation mode data")
+        corrupted_df = df[df['attack_type'].notna()]
+
+        if len(corrupted_df) == 0:
+            print("[WARN] No data found")
+            return
+
+        # Extract Clean performance from original_iou/dice columns (average of all rows)
+        clean_iou = corrupted_df['original_iou'].mean()
+        clean_dice = corrupted_df['original_dice'].mean()
+
+    print(f"[OK] Clean performance: IoU={clean_iou:.4f}, Dice={clean_dice:.4f}")
+
+    # ===== 2. Group statistics by corruption type =====
+    if len(corrupted_df) == 0:
+        print("[WARN] No perturbation data found")
+        return
+
+    # Group by attack_type, calculate mean (across all levels and images)
+    stats_by_type = corrupted_df.groupby('attack_type').agg({
+        'adversarial_iou': 'mean',
+        'adversarial_dice': 'mean',
+        'iou_drop': 'mean',
+        'dice_drop': 'mean'
+    }).round(4)
+
+    # ===== 3. Calculate overall average =====
+    avg_iou = corrupted_df['adversarial_iou'].mean()
+    avg_dice = corrupted_df['adversarial_dice'].mean()
+    avg_iou_drop = corrupted_df['iou_drop'].mean()
+    avg_dice_drop = corrupted_df['dice_drop'].mean()
+
+    # ===== 4. Build summary table similar to Table 1 =====
+    summary_rows = []
+
+    # Add Clean row
+    if clean_iou is not None:
+        summary_rows.append({
+            'Corruption_Type': 'Clean',
+            'IoU': clean_iou,
+            'Dice': clean_dice,
+            'IoU_Drop': 0.0,
+            'Dice_Drop': 0.0
+        })
+
+    # Add each corruption type
+    for attack_type, row in stats_by_type.iterrows():
+        summary_rows.append({
+            'Corruption_Type': attack_type,
+            'IoU': row['adversarial_iou'],
+            'Dice': row['adversarial_dice'],
+            'IoU_Drop': row['iou_drop'],
+            'Dice_Drop': row['dice_drop']
+        })
+
+    # Add Avg row
+    summary_rows.append({
+        'Corruption_Type': 'Avg',
+        'IoU': avg_iou,
+        'Dice': avg_dice,
+        'IoU_Drop': avg_iou_drop,
+        'Dice_Drop': avg_dice_drop
+    })
+
+    # Add Delta_TP row (Clean - Avg)
+    if clean_iou is not None:
+        delta_tp_iou = clean_iou - avg_iou
+        delta_tp_dice = clean_dice - avg_dice
+        summary_rows.append({
+            'Corruption_Type': 'Delta_TP',
+            'IoU': delta_tp_iou,
+            'Dice': delta_tp_dice,
+            'IoU_Drop': delta_tp_iou,
+            'Dice_Drop': delta_tp_dice
+        })
+
+    # ===== 5. Save and display summary table =====
+    summary_df = pd.DataFrame(summary_rows)
+
+    # Save summary CSV
+    summary_path = csv_path.replace('.csv', '_SUMMARY.csv')
+    summary_df.to_csv(summary_path, index=False, float_format='%.4f')
+    print(f"[OK] Summary table saved: {summary_path}")
+
+    # Print to console
+    print("\n" + "="*70)
+    print("[STATS] Performance Summary Table (Table 1 format)")
+    print("="*70)
+    print(summary_df.to_string(index=False))
+    print("="*70)
+
+    # ===== 6. Optional: detailed statistics by level =====
+    if 'level' in corrupted_df.columns:
+        print("\n[STATS] Detailed statistics by perturbation level:")
+        level_stats = corrupted_df.groupby(['attack_type', 'level']).agg({
+            'adversarial_iou': 'mean',
+            'adversarial_dice': 'mean'
+        }).round(4)
+        print(level_stats)
+
+        # Save detailed statistics
+        level_stats_path = csv_path.replace('.csv', '_STATS_BY_LEVEL.csv')
+        level_stats.to_csv(level_stats_path, float_format='%.4f')
+        print(f"[OK] Statistics by level saved: {level_stats_path}")
+
+    return summary_df
+   
+if __name__ == "__main__":
+    main()

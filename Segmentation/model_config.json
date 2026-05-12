@@ -1,0 +1,71 @@
+{
+  "medsam": {
+    "name": "medsam",
+    "repo_id": "flaviagiammarino/medsam-vit-base",
+    "local_path": null,
+    "prompt_type": "box",
+    "prompt_required": true,
+    "image_size": 1024,
+    "normalize_mean": [0.485, 0.456, 0.406],
+    "normalize_std": [0.229, 0.224, 0.225],
+    "notes": "Medical-specific SAM, requires box prompt"
+  },
+	
+   "sammed2d": {
+    "name": "SAM-Med2D",
+    "model_type": "vit_b",
+    "local_path": "../pretrain_model/sam-med2d_b.pth",
+    "prompt_type": "box",
+    "prompt_required": true,
+    "image_size": 256,
+    "encoder_adapter": true,
+    "normalize_mean": [0.485, 0.456, 0.406],
+    "normalize_std": [0.229, 0.224, 0.225],
+    "notes": "SAM-Med2D medical segmentation model, uses 256 size consistent with dataset"
+  },
+	
+  "sam": {
+    "name": "SAM-ViT-Huge",
+    "repo_id": "facebook/sam-vit-huge",
+    "local_path": null,
+    "prompt_type": "box",
+    "prompt_required": true,
+    "image_size": 1024,
+    "normalize_mean": [0.485, 0.456, 0.406],
+    "normalize_std": [0.229, 0.224, 0.225],
+    "notes": "General SAM, requires box prompt"
+  },
+  "sam_point": {
+    "name": "SAM-PointPrompt",
+    "repo_id": "facebook/sam-vit-huge",
+    "local_path": null,
+    "prompt_type": "point",
+    "prompt_required": true,
+    "image_size": 1024,
+    "normalize_mean": [0.485, 0.456, 0.406],
+    "normalize_std": [0.229, 0.224, 0.225],
+    "notes": "SAM with single point prompt"
+  },
+  "unet": {
+    "name": "ResNet50-UNet",
+    "repo_id": null,
+    "local_path": "./checkpoints/unet_resnet50.pth",
+    "prompt_type": "none",
+    "prompt_required": false,
+    "image_size": 512,
+    "normalize_mean": [0.485, 0.456, 0.406],
+    "normalize_std": [0.229, 0.224, 0.225],
+    "notes": "Full image segmentation, no prompt required"
+  },
+  "deeplab": {
+    "name": "DeepLabV3-ResNet101",
+    "repo_id": null,
+    "local_path": "./checkpoints/deeplabv3_resnet101.pth",
+    "prompt_type": "none",
+    "prompt_required": false,
+    "image_size": 520,
+    "normalize_mean": [0.485, 0.456, 0.406],
+    "normalize_std": [0.229, 0.224, 0.225],
+    "notes": "Full image segmentation, no prompt required"
+  }
+}

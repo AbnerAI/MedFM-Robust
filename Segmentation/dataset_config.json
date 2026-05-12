@@ -1,0 +1,150 @@
+{
+  "datasets": {
+    "isic_2016": {
+      "name": "ISIC 2016",
+      "resized_img_dir": "/mnt/fast/nobackup/scratch4weeks/xxx/data/Segmentation_Data_2025/Part-1-Lesion-Segmentation-2016/Training/images_256",
+      "resized_mask_dir": "/mnt/fast/nobackup/scratch4weeks/xxx/data/Segmentation_Data_2025/Part-1-Lesion-Segmentation-2016/Training/masks_256",
+      "bbox_json": "/mnt/fast/nobackup/scratch4weeks/xxx/data/Segmentation_Data_2025/Part-1-Lesion-Segmentation-2016/Training/bbox_coordinates_256.json",
+      "image_extensions": ["jpg"],
+      "mask_suffix": "_Segmentation.png"
+    },
+    "kelkalot-the-hyper-kvasir-dataset": {
+    "name": "hyper-kvasir", 
+    "resized_img_dir": "/mnt/fast/nobackup/scratch4weeks/xxx/data/Segmentation_Data_2025/kelkalot-the-hyper-kvasir-dataset/1/segmented-images/images_256/",
+    "resized_mask_dir": "/mnt/fast/nobackup/scratch4weeks/xxx/data/Segmentation_Data_2025/kelkalot-the-hyper-kvasir-dataset/1/segmented-images/masks_256/",
+    "bbox_json": "/mnt/fast/nobackup/scratch4weeks/xxx/data/Segmentation_Data_2025/kelkalot-the-hyper-kvasir-dataset/1/segmented-images/bbox_coordinates_256.json",
+    "image_extensions": ["jpg"],
+    "mask_suffix": ".jpg"
+    },
+    "nikhilroxtomar-brain-tumor": {
+    "name": "brain-tumor", 
+    "resized_img_dir": "/mnt/fast/nobackup/scratch4weeks/xxx/data/Segmentation_Data_2025/nikhilroxtomar-brain-tumor-segmentation/1/images_256/",
+    "resized_mask_dir": "/mnt/fast/nobackup/scratch4weeks/xxx/data/Segmentation_Data_2025/nikhilroxtomar-brain-tumor-segmentation/1/masks_256/",
+    "bbox_json": "/mnt/fast/nobackup/scratch4weeks/xxx/data/Segmentation_Data_2025/nikhilroxtomar-brain-tumor-segmentation/1/bbox_coordinates_256.json",
+    "image_extensions": ["png"],
+    "mask_suffix": ".png"
+    },
+    "aryashah2k-breast-ultrasound": {
+    "name": "breast-ultrasound", 
+    "resized_img_dir": "/mnt/fast/nobackup/scratch4weeks/xxx/data/Segmentation_Data_2025/aryashah2k-breast-ultrasound-images-dataset/Dataset_BUSI_with_GT/malignant_preprocessed/images_256/",
+    "resized_mask_dir": "/mnt/fast/nobackup/scratch4weeks/xxx/data/Segmentation_Data_2025/aryashah2k-breast-ultrasound-images-dataset/Dataset_BUSI_with_GT/malignant_preprocessed/masks_256/",
+    "bbox_json": "/mnt/fast/nobackup/scratch4weeks/xxx/data/Segmentation_Data_2025/aryashah2k-breast-ultrasound-images-dataset/Dataset_BUSI_with_GT/malignant_preprocessed/bbox_coordinates_256.json",
+    "image_extensions": ["png"],
+    "mask_suffix": ".png"
+    },
+    "andrewmvd-cancer-inst": {
+    "name": "cancer-inst", 
+    "resized_img_dir": "/mnt/fast/nobackup/scratch4weeks/xxx/data/Segmentation_Data_2025/andrewmvd-cancer-inst-segmentation-and-classification/4/Part_1/images_256/",
+    "resized_mask_dir": "/mnt/fast/nobackup/scratch4weeks/xxx/data/Segmentation_Data_2025/andrewmvd-cancer-inst-segmentation-and-classification/4/Part_1/masks_256/",
+    "bbox_json": "/mnt/fast/nobackup/scratch4weeks/xxx/data/Segmentation_Data_2025/andrewmvd-cancer-inst-segmentation-and-classification/4/Part_1/bbox_coordinates_256.json",
+    "image_extensions": ["npy"],
+    "mask_suffix": ".png",
+    "npy_format": "multi"
+    }, 
+    "deathtrooper-multichannel-glaucoma-disc": {
+    "name": "multichannel-glaucoma-disc", 
+    "resized_img_dir": "/mnt/fast/nobackup/scratch4weeks/xxx/data/Segmentation_Data_2025/deathtrooper-multichannel-glaucoma-benchmark-dataset/10/organized_glaucoma_data/disc/images_256/",
+    "resized_mask_dir": "/mnt/fast/nobackup/scratch4weeks/xxx/data/Segmentation_Data_2025/deathtrooper-multichannel-glaucoma-benchmark-dataset/10/organized_glaucoma_data/disc/masks_256/",
+    "bbox_json": "/mnt/fast/nobackup/scratch4weeks/xxx/data/Segmentation_Data_2025/deathtrooper-multichannel-glaucoma-benchmark-dataset/10/organized_glaucoma_data/disc/bbox_coordinates_256.json",
+    "image_extensions": ["png"],
+    "mask_suffix": ".png"
+    },
+    "deathtrooper-multichannel-glaucoma-cup": {
+    "name": "multichannel-glaucoma-cup", 
+    "resized_img_dir": "/mnt/fast/nobackup/scratch4weeks/xxx/data/Segmentation_Data_2025/deathtrooper-multichannel-glaucoma-benchmark-dataset/10/organized_glaucoma_data/cup/images_256/",
+    "resized_mask_dir": "/mnt/fast/nobackup/scratch4weeks/xxx/data/Segmentation_Data_2025/deathtrooper-multichannel-glaucoma-benchmark-dataset/10/organized_glaucoma_data/cup/masks_256/",
+    "bbox_json": "/mnt/fast/nobackup/scratch4weeks/xxx/data/Segmentation_Data_2025/deathtrooper-multichannel-glaucoma-benchmark-dataset/10/organized_glaucoma_data/cup/bbox_coordinates_256.json",
+    "image_extensions": ["png"],
+    "mask_suffix": ".png"
+    },
+    
+    "prathamkumar0011-miccai-flare22-challenge": {
+    "name": "miccai-flare22-challenge", 
+    "resized_img_dir": "/mnt/fast/nobackup/scratch4weeks/xxx/data/Segmentation_Data_2025/prathamkumar0011-miccai-flare22-challenge-dataset/1/FLARE22Train/FLARE22Train/npy/CT_Abd/images_256/",
+    "resized_mask_dir": "/mnt/fast/nobackup/scratch4weeks/xxx/data/Segmentation_Data_2025/prathamkumar0011-miccai-flare22-challenge-dataset/1/FLARE22Train/FLARE22Train/npy/CT_Abd/masks_256/",
+    "bbox_json": "/mnt/fast/nobackup/scratch4weeks/xxx/data/Segmentation_Data_2025/prathamkumar0011-miccai-flare22-challenge-dataset/1/FLARE22Train/FLARE22Train/npy/CT_Abd/bbox_coordinates_256.json",
+    "image_extensions": ["npy"],
+    "mask_suffix": ".npy",
+    "npy_format": "single"
+    } 
+    
+  },
+	  
+  "perturbation_datasets": {
+    "isic_2016_perturbed": {
+      "name": "ISIC 2016 Perturbed",
+      "root_path": "/mnt/fast/nobackup/scratch4weeks/xxx/data/Segmentation_Data_2025/Part-1-Lesion-Segmentation-2016/Training/perturbed_datasets/full_image_perturbations",
+      "perturbation_types": {
+        "base": ["gaussian_noise", "gaussian_blur", "compression_artifacts", "brightness_contrast", "pixelate"],
+        "modality_specific": ["dermoscopy_artifacts", "light_reflection", "hair_artifacts"]
+      },
+      "levels": [1, 2, 3, 4, 5],
+      "structure": "type/level/image"
+    },
+    "kelkalot-the-hyper-kvasir-dataset_perturbed": {
+      "name": "kelkalot-the-hyper-kvasir-dataset Perturbed",
+      "root_path": "/mnt/fast/nobackup/scratch4weeks/xxx/data/Segmentation_Data_2025/kelkalot-the-hyper-kvasir-dataset/1/segmented-images/perturbed_datasets/full_image_perturbations",
+      "perturbation_types": {
+        "base": ["gaussian_noise", "gaussian_blur", "motion_blur", "brightness_contrast"],
+        "modality_specific": ["specular_reflection", "bubbles", "blood", "saturation"]
+      },
+      "levels": [1, 2, 3, 4, 5],
+      "structure": "type/level/image"
+    },
+    "nikhilroxtomar-brain-tumor_perturbed": {
+    "name": "nikhilroxtomar-brain-tumor Perturbed",
+    "root_path": "/mnt/fast/nobackup/scratch4weeks/xxx/data/Segmentation_Data_2025/nikhilroxtomar-brain-tumor-segmentation/1/perturbed_datasets/full_image_perturbations",
+    "perturbation_types": {
+      "base": ["gaussian_noise", "gaussian_blur", "motion_blur"],
+      "modality_specific": ["motion_artifacts", "bias_field", "ghosting"]
+    },
+    "levels": [1, 2, 3, 4, 5],
+    "structure": "type/level/image"
+    },
+    "aryashah2k-breast-ultrasound_perturbed": {
+    "name": "aryashah2k-breast-ultrasound Perturbed",
+    "root_path": "/mnt/fast/nobackup/scratch4weeks/xxx/data/Segmentation_Data_2025/aryashah2k-breast-ultrasound-images-dataset/Dataset_BUSI_with_GT/malignant_preprocessed/perturbed_datasets/full_image_perturbations",
+    "perturbation_types": {
+      "base": ["gaussian_noise", "speckle_noise", "gaussian_blur", "motion_blur"],
+      "modality_specific": ["acoustic_shadowing", "reverberation_artifacts"]
+    },
+    "levels": [1, 2, 3, 4, 5],
+    "structure": "type/level/image"
+    },
+		"deathtrooper-multichannel-glaucoma-disc_perturbed": {
+    "name": "deathtrooper-multichannel-glaucoma-disc Perturbed",
+    "root_path": "/mnt/fast/nobackup/scratch4weeks/xxx/data/Segmentation_Data_2025/deathtrooper-multichannel-glaucoma-benchmark-dataset/10/organized_glaucoma_data/disc/perturbed_datasets/full_image_perturbations",
+    "perturbation_types": {
+      "base": ["gaussian_noise", "gaussian_blur", "motion_blur"],
+      "modality_specific": ["shadow_artifacts", "blink_artifacts", "motion_artifacts_oct", "defocus_artifacts", "speckle_artifacts"]
+    },
+    "levels": [1, 2, 3, 4, 5],
+    "structure": "type/level/image"
+    },
+    "deathtrooper-multichannel-glaucoma-cup_perturbed": {
+    "name": "deathtrooper-multichannel-glaucoma-cup Perturbed",
+    "root_path": "/mnt/fast/nobackup/scratch4weeks/xxx/data/Segmentation_Data_2025/deathtrooper-multichannel-glaucoma-benchmark-dataset/10/organized_glaucoma_data/cup/perturbed_datasets/full_image_perturbations",
+    "perturbation_types": {
+      "base": ["gaussian_noise", "gaussian_blur", "motion_blur"],
+      "modality_specific": ["shadow_artifacts", "blink_artifacts", "motion_artifacts_oct", "defocus_artifacts", "speckle_artifacts"]
+    },
+    "levels": [1, 2, 3, 4, 5],
+    "structure": "type/level/image"
+    }
+  },
+  
+  "output_config": {
+    "base_output_dir": "./results",
+    "subdirs": {
+      "segmentation": "segmentation",
+      "adversarial_full": "adversarial/full_image", 
+      "adversarial_local": "adversarial/local",
+      "perturbation_eval": "perturbation_evaluation",
+      "results": "results",
+      "visualizations": "visualizations"
+    },
+    "auto_create_timestamp_dir": true,
+    "save_formats": ["csv", "xlsx"],
+    "auto_save_interval": 10
+  }
+}

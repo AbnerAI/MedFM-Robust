@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MedFM-Robust: Benchmarking Robustness of Medical Foundation Models</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #ffffff;
+      --text: #1a1a1a;
+      --text-muted: #555;
+      --accent: #2563eb;
+      --accent-red: #dc2626;
+      --accent-green: #16a34a;
+      --border: #e5e7eb;
+      --surface: #f9fafb;
+      --sans: 'Inter', sans-serif;
+      --serif: 'DM Serif Display', serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 16px;
+      line-height: 1.6;
+    }
+
+    /* ── HEADER ── */
+    header {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 64px 24px 0;
+      text-align: center;
+    }
+
+    h1 {
+      font-family: var(--serif);
+      font-size: clamp(2rem, 5vw, 3.2rem);
+      font-weight: 400;
+      line-height: 1.18;
+      color: var(--text);
+      margin-bottom: 32px;
+      letter-spacing: -0.01em;
+    }
+
+    .authors {
+      font-size: 17px;
+      font-weight: 400;
+      color: var(--accent);
+      line-height: 2;
+      margin-bottom: 10px;
+    }
+
+    .authors sup {
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .affils {
+      font-size: 15px;
+      color: var(--text-muted);
+      margin-bottom: 14px;
+    }
+
+    .conf-line {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--accent-red);
+      margin-bottom: 28px;
+      letter-spacing: 0.01em;
+    }
+
+    /* ── BUTTONS ── */
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+      margin-bottom: 56px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--sans);
+      font-size: 14px;
+      font-weight: 500;
+      padding: 10px 22px;
+      border-radius: 50px;
+      text-decoration: none;
+      transition: all 0.18s;
+      letter-spacing: 0.01em;
+    }
+
+    .btn-dark {
+      background: #1a1a1a;
+      color: #fff;
+      border: 2px solid #1a1a1a;
+    }
+    .btn-dark:hover { background: #333; border-color: #333; }
+
+    .btn-outline {
+      background: transparent;
+      color: #1a1a1a;
+      border: 2px solid #d1d5db;
+    }
+    .btn-outline:hover { border-color: #1a1a1a; }
+
+    /* ── HERO FIGURE ── */
+    .hero-fig {
+      max-width: 1000px;
+      margin: 0 auto 0;
+      padding: 0 24px;
+    }
+
+    .hero-fig img {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      display: block;
+    }
+
+    .hero-caption {
+      text-align: center;
+      font-size: 13.5px;
+      color: var(--text-muted);
+      margin-top: 12px;
+      line-height: 1.6;
+      padding: 0 12px;
+    }
+
+    /* ── DIVIDER ── */
+    .divider {
+      max-width: 1000px;
+      margin: 48px auto;
+      border: none;
+      border-top: 1px solid var(--border);
+    }
+
+    /* ── MAIN CONTENT ── */
+    .container {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    .wide {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    section { margin-bottom: 52px; }
+
+    h2 {
+      font-family: var(--serif);
+      font-size: 1.9rem;
+      font-weight: 400;
+      margin-bottom: 18px;
+      color: var(--text);
+    }
+
+    h3 {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+
+    p {
+      color: #374151;
+      line-height: 1.75;
+      margin-bottom: 12px;
+    }
+    p:last-child { margin-bottom: 0; }
+
+    /* ── ABSTRACT ── */
+    .abstract-text {
+      font-size: 16px;
+      line-height: 1.85;
+      color: #374151;
+      text-align: justify;
+    }
+
+    /* ── STATS ── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      margin: 36px 0;
+    }
+
+    @media (max-width: 700px) {
+      .stats-grid { grid-template-columns: repeat(3, 1fr); }
+    }
+
+    .stat-cell {
+      background: var(--bg);
+      padding: 20px 12px;
+      text-align: center;
+    }
+
+    .stat-val {
+      font-family: var(--serif);
+      font-size: 2.2rem;
+      color: var(--accent);
+      display: block;
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+
+    .stat-lbl {
+      font-size: 11.5px;
+      font-weight: 500;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* ── FINDINGS ── */
+    .findings-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    @media (max-width: 640px) {
+      .findings-grid { grid-template-columns: 1fr; }
+    }
+
+    .finding-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 22px 24px;
+    }
+
+    .finding-num {
+      font-family: var(--serif);
+      font-size: 2rem;
+      color: #d1d5db;
+      line-height: 1;
+      margin-bottom: 10px;
+    }
+
+    .finding-card p {
+      font-size: 14.5px;
+      line-height: 1.65;
+      color: var(--text);
+      margin: 0;
+    }
+
+    .finding-card strong { color: var(--accent-red); font-weight: 600; }
+
+    /* ── FIGURES ── */
+    .fig-wrap {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      margin: 20px 0;
+    }
+
+    .fig-wrap img { width: 100%; display: block; }
+
+    .fig-caption {
+      padding: 14px 18px;
+      font-size: 13.5px;
+      color: var(--text-muted);
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      line-height: 1.6;
+    }
+
+    .fig-caption strong { color: var(--text); font-weight: 600; }
+
+    /* ── TWO COL ── */
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 16px;
+    }
+
+    @media (max-width: 640px) { .two-col { grid-template-columns: 1fr; } }
+
+    .col-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px 22px;
+    }
+
+    .col-card ul {
+      padding-left: 16px;
+      font-size: 14px;
+      line-height: 1.85;
+      color: #374151;
+    }
+
+    /* ── TAGS ── */
+    .tag-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 18px;
+    }
+
+    .tag {
+      background: #eff6ff;
+      color: var(--accent);
+      border: 1px solid #bfdbfe;
+      font-size: 12.5px;
+      font-weight: 500;
+      padding: 4px 14px;
+      border-radius: 50px;
+    }
+
+    /* ── TABLE ── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14.5px;
+      margin-top: 12px;
+    }
+
+    th {
+      background: var(--surface);
+      padding: 10px 16px;
+      text-align: left;
+      font-weight: 600;
+      font-size: 13px;
+      color: var(--text-muted);
+      border-bottom: 2px solid var(--border);
+    }
+
+    td {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      color: #374151;
+    }
+
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--surface); }
+
+    .rank1 td { font-weight: 600; color: var(--accent-green); }
+    .worst td:last-child { color: var(--accent-red); font-weight: 600; }
+
+    /* ── BIBTEX ── */
+    .bibtex-wrap {
+      position: relative;
+      background: #0f172a;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    pre {
+      padding: 24px 28px;
+      font-family: 'Courier New', monospace;
+      font-size: 13.5px;
+      line-height: 1.8;
+      color: #94a3b8;
+      overflow-x: auto;
+    }
+
+    pre .kw  { color: #34d399; }
+    pre .val { color: #fbbf24; }
+    pre .fd  { color: #60a5fa; }
+
+    .copy-btn {
+      position: absolute;
+      top: 12px; right: 12px;
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #94a3b8;
+      font-family: var(--sans);
+      font-size: 12px;
+      font-weight: 500;
+      padding: 6px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .copy-btn:hover { background: #334155; color: #e2e8f0; }
+
+    /* ── FOOTER ── */
+    footer {
+      text-align: center;
+      padding: 32px 24px 48px;
+      font-size: 13px;
+      color: #9ca3af;
+      border-top: 1px solid var(--border);
+      margin-top: 64px;
+    }
+
+    footer a { color: var(--accent); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+
+    /* ── ANIMATIONS ── */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    header { animation: fadeIn 0.5s ease both; }
+  </style>
+</head>
+<body>
+
+<!-- ═══ HEADER ═══ -->
+<header>
+  <h1>MedFM-Robust: Benchmarking Robustness<br>of Medical Foundation Models</h1>
+
+  <p class="authors">Anonymous</p>
+  <p class="conf-line">MICCAI 2026 · Under Review</p>
+
+  <div class="btn-row">
+    <a class="btn btn-dark" href="https://anonymous.4open.science/r/MedFM-Robust--CE63" target="_blank">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      Code
+    </a>
+    <a class="btn btn-outline" href="#" target="_blank">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      Paper (Coming Soon)
+    </a>
+    <a class="btn btn-outline" href="#results">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      Results
+    </a>
+  </div>
+</header>
+
+<!-- ═══ HERO FIGURES ═══ -->
+<div class="hero-fig">
+  <img src="assets/framework_01.png" alt="MedFM-Robust Framework" />
+  <p class="hero-caption">
+    <strong>Fig. 1.</strong>
+    <strong>(a)</strong> Overview of our robustness evaluation framework. We generate SSIM-calibrated perturbations across five severity levels, combining base corruptions with modality-specific artifacts. We benchmark three Med-VLMs and two SAM-based segmentation models under a unified protocol, and investigate multiple fine-tuning strategies across VQA, captioning, visual grounding, and segmentation tasks.
+  </p>
+</div>
+
+<hr class="divider">
+
+<div class="hero-fig" style="margin-bottom: 0;">
+  <img src="assets/results_overview.png" alt="Key Results" />
+  <p class="hero-caption">
+    <strong>Fig. 2.</strong>
+    <strong>(a)</strong> Traditional clean-image evaluation pipeline.
+    <strong>(b)</strong> Our robustness benchmark applies modality-adaptive perturbations before the encoder and evaluates both Med-VLM tasks and segmentation under matched settings.
+    <strong>(c)</strong> Metrics comparison: IoU drop closely tracks Dice drop, and representative fatal perturbations cause increasing performance degradation with higher severity levels.
+  </p>
+</div>
+
+<hr class="divider">
+
+<!-- ═══ MAIN ═══ -->
+<main>
+
+<!-- Stats -->
+<div class="wide">
+  <div class="stats-grid">
+    <div class="stat-cell"><span class="stat-val">40</span><span class="stat-lbl">Perturbation Types</span></div>
+    <div class="stat-cell"><span class="stat-val">8</span><span class="stat-lbl">Imaging Modalities</span></div>
+    <div class="stat-cell"><span class="stat-val">5</span><span class="stat-lbl">VLMs Evaluated</span></div>
+    <div class="stat-cell"><span class="stat-val">2</span><span class="stat-lbl">Seg. Models</span></div>
+    <div class="stat-cell"><span class="stat-val">5</span><span class="stat-lbl">Fine-tuning Strategies</span></div>
+    <div class="stat-cell"><span class="stat-val">5</span><span class="stat-lbl">Severity Levels</span></div>
+  </div>
+</div>
+
+<!-- Abstract -->
+<div class="container">
+  <section>
+    <h2>Abstract</h2>
+    <p class="abstract-text">
+      Medical foundation models have achieved remarkable clinical performance, yet their robustness under real-world perturbations remains underexplored. We present a robustness benchmark comprising <strong>40 perturbation types</strong> (12 base, 28 medical-specific) across <strong>eight imaging modalities</strong>, evaluating five VLMs (LLaVA-Med, MedGemma, MedGemma-1.5, Gemini-2.5-flash and GPT-4o-mini) on VQA, visual grounding, and captioning, alongside two segmentation models (MedSAM, SAM-Med2D) with five fine-tuning strategies.
+    </p>
+    <p class="abstract-text" style="margin-top: 14px;">
+      Our findings reveal: (1) Fine-tuning strategy dominates robustness, with LoRA exhibiting nearly double the degradation of full fine-tuning, while SAM-Med2D's Adapter offers favorable efficiency–robustness trade-off. (2) Medical-specific perturbations disproportionately damage segmentation, with 9 of 15 top corruptions being domain-specific. (3) LoRA-tuned visual grounding drops over 40 points, whereas zero-shot captioning remains stable (&lt;7% drop). These results provide deployment guidelines and underscore the necessity of domain-specific robustness evaluation for medical AI.
+    </p>
+  </section>
+
+  <!-- Key Findings -->
+  <section>
+    <h2>Key Findings</h2>
+    <div class="findings-grid">
+      <div class="finding-card">
+        <div class="finding-num">01</div>
+        <p>Fine-tuning strategy dominates robustness. <strong>LoRA exhibits ≈2× the degradation</strong> of full fine-tuning. SAM-Med2D's Adapter is the best PEFT efficiency–robustness trade-off.</p>
+      </div>
+      <div class="finding-card">
+        <div class="finding-num">02</div>
+        <p>Medical-specific corruptions are disproportionately harmful. <strong>9 of top 15 perturbations are domain-specific</strong> — standard benchmarks underestimate real deployment risks.</p>
+      </div>
+      <div class="finding-card">
+        <div class="finding-num">03</div>
+        <p>Task formulation determines VLM robustness. <strong>LoRA-tuned Grounding drops &gt;40 points</strong>, while zero-shot Captioning stays stable (&lt;7% drop).</p>
+      </div>
+      <div class="finding-card">
+        <div class="finding-num">04</div>
+        <p>General VLMs excel at VQA but fail on Grounding. <strong>Gemini-2.5-flash: 54% relative drop.</strong> Medical VLMs are more stable; MedGemma shows the smallest drops overall.</p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- Results -->
+<div class="wide">
+  <section id="results">
+    <h2 style="padding: 0 24px;">Results</h2>
+    <div style="padding: 0 24px;">
+      <p style="color: var(--text-muted); font-size: 14.5px; margin-bottom: 16px;">
+        Comprehensive evaluation across segmentation and VLMs under 40 perturbation types at 5 severity levels.
+      </p>
+    </div>
+
+    <div style="padding: 0 24px;">
+      <div class="fig-wrap">
+        <img src="assets/seg_results_01.png" alt="Full results figure" />
+        <div class="fig-caption">
+          <strong>Fig. 3.</strong>
+          <strong>Left (Segmentation):</strong> (a) Performance–robustness trade-off. (b) Strategy ranking. (c) Model comparison. (d) Dataset sensitivity. (e) Top 15 perturbations. (f) Severity level impact.
+          <strong>Right (VLMs):</strong> (g–i) Clean vs. perturbed on VQA, Grounding, Captioning. (j–l) Per-perturbation impact.
+        </div>
+      </div>
+    </div>
+
+    <div style="padding: 0 24px;">
+      <div class="two-col">
+        <div class="col-card">
+          <h3>Segmentation — Strategy Ranking</h3>
+          <table>
+            <thead><tr><th>Rank</th><th>Strategy</th><th>IoU Drop</th></tr></thead>
+            <tbody>
+              <tr class="rank1"><td>1</td><td>Full fine-tuning</td><td>0.025</td></tr>
+              <tr><td>2</td><td>Dec-Only</td><td>0.029</td></tr>
+              <tr><td>2</td><td>Enc-Partial</td><td>0.029</td></tr>
+              <tr><td>2</td><td>Dec-Prompt</td><td>0.029</td></tr>
+              <tr><td>5</td><td>Adapter</td><td>0.033</td></tr>
+              <tr class="worst"><td>6</td><td>LoRA</td><td>0.048 (≈2×)</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="col-card">
+          <h3>VLM — Task Robustness</h3>
+          <table>
+            <thead><tr><th>Task</th><th>Setting</th><th>Drop</th></tr></thead>
+            <tbody>
+              <tr class="rank1"><td>Captioning</td><td>Zero-shot</td><td>&lt;0.02 BLEU</td></tr>
+              <tr><td>VQA (med.)</td><td>Zero-shot</td><td>&lt;8 pts</td></tr>
+              <tr class="worst"><td>VQA (Gemini)</td><td>Zero-shot</td><td>36.1 pts (54%)</td></tr>
+              <tr class="worst"><td>Grounding</td><td>LoRA FT</td><td>&gt;40 pts</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- Coverage -->
+<div class="container">
+  <section>
+    <h2>Benchmark Coverage</h2>
+    <div class="two-col">
+      <div class="col-card">
+        <h3>Perturbation Types (40 total)</h3>
+        <ul>
+          <li><strong>Base (12):</strong> Gaussian/salt-pepper/speckle noise, Gaussian/motion blur, brightness, contrast, JPEG, pixelation, rotation, scaling, translation</li>
+          <li><strong>Med-Specific (28):</strong> CT metal artifacts, MRI ghosting & bias-field, US acoustic shadowing, pathology stain variations, endoscopy bubbles & specular reflections, OCT shadow/blink/defocus, X-ray scatter & exposure, angiography haze</li>
+        </ul>
+      </div>
+      <div class="col-card">
+        <h3>Datasets & Models</h3>
+        <ul>
+          <li><strong>Segmentation:</strong> ISIC 2016, Brain Tumor MRI, Glaucoma Disc/Cup, Kvasir-SEG</li>
+          <li><strong>VLM:</strong> OmniMedVQA, ROCOv2, MeCoVQA</li>
+          <li><strong>Seg Models:</strong> MedSAM, SAM-Med2D</li>
+          <li><strong>VLMs:</strong> LLaVA-Med, MedGemma, MedGemma-1.5, GPT-4o-mini, Gemini-2.5-flash</li>
+        </ul>
+      </div>
+    </div>
+    <div class="tag-row">
+      <span class="tag">Dermoscopy</span>
+      <span class="tag">MRI</span>
+      <span class="tag">Fundus / OCT</span>
+      <span class="tag">Endoscopy</span>
+      <span class="tag">CT</span>
+      <span class="tag">X-ray</span>
+      <span class="tag">Ultrasound</span>
+      <span class="tag">Pathology</span>
+      <span class="tag">Angiography</span>
+    </div>
+  </section>
+
+  <!-- BibTeX -->
+  <section>
+    <h2>BibTeX</h2>
+    <div class="bibtex-wrap">
+      <button class="copy-btn" onclick="copyBib()">Copy</button>
+      <pre><span class="kw">@inproceedings</span>{<span class="val">anonymous2026medfmrobust</span>,
+  <span class="fd">title</span>     = {MedFM-Robust: Benchmarking Robustness of
+               Medical Foundation Models},
+  <span class="fd">author</span>    = {Anonymous},
+  <span class="fd">booktitle</span> = {Medical Image Computing and Computer
+               Assisted Intervention (MICCAI)},
+  <span class="fd">year</span>      = {2026},
+  <span class="fd">note</span>      = {Under Review}
+}</pre>
+    </div>
+  </section>
+</div>
+
+</main>
+
+<!-- ═══ FOOTER ═══ -->
+<footer>
+  <p>
+    Built with the <a href="https://github.com/eliahuhorwitz/Academic-project-page-template" target="_blank">Academic Project Page Template</a>.
+    Code: <a href="https://anonymous.4open.science/r/MedFM-Robust--CE63" target="_blank">anonymous.4open.science</a>.
+  </p>
+</footer>
+
+<script>
+function copyBib() {
+  const text = `@inproceedings{anonymous2026medfmrobust,
+  title     = {MedFM-Robust: Benchmarking Robustness of Medical Foundation Models},
+  author    = {Anonymous},
+  booktitle = {Medical Image Computing and Computer Assisted Intervention (MICCAI)},
+  year      = {2026},
+  note      = {Under Review}
+}`;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.querySelector('.copy-btn');
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 2000);
+  });
+}
+</script>
+
+</body>
+</html>
