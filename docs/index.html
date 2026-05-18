@@ -65,6 +65,13 @@
       font-size: 15px;
       color: var(--text-muted);
       margin-bottom: 14px;
+      line-height: 1.7;
+    }
+
+    .email {
+      font-size: 15px;
+      color: var(--text-muted);
+      margin-bottom: 18px;
     }
 
     .conf-line {
@@ -422,8 +429,19 @@
 <header>
   <h1>MedFM-Robust: Benchmarking Robustness<br>of Medical Foundation Models</h1>
 
-  <p class="authors">Anonymous</p>
-  <p class="conf-line">MICCAI 2026 · Under Review</p>
+  <p class="authors">
+    Xiangxiang Cui<sup>1</sup>, Tianjin Huang<sup>2</sup>, Yifang Wang<sup>3</sup>,
+    Lijie Hu<sup>4</sup>, and Lu Yin<sup>5</sup>
+  </p>
+  <p class="affils">
+    <sup>1</sup>Beijing Normal University, China<br>
+    <sup>2</sup>University of Exeter, United Kingdom<br>
+    <sup>3</sup>University College London, United Kingdom<br>
+    <sup>4</sup>Mohamed bin Zayed University of Artificial Intelligence, United Arab Emirates<br>
+    <sup>5</sup>University of Surrey, United Kingdom
+  </p>
+  <p class="email">l.yin@surrey.ac.uk</p>
+  <p class="conf-line">This work has been accepted by MICCAI 2026.</p>
 
   <div class="btn-row">
     <a class="btn btn-dark" href="https://anonymous.4open.science/r/MedFM-Robust--CE63" target="_blank">
@@ -609,14 +627,15 @@
     <h2>BibTeX</h2>
     <div class="bibtex-wrap">
       <button class="copy-btn" onclick="copyBib()">Copy</button>
-      <pre><span class="kw">@inproceedings</span>{<span class="val">anonymous2026medfmrobust</span>,
+      <pre><span class="kw">@inproceedings</span>{<span class="val">cui2026medfmrobust</span>,
   <span class="fd">title</span>     = {MedFM-Robust: Benchmarking Robustness of
                Medical Foundation Models},
-  <span class="fd">author</span>    = {Anonymous},
+  <span class="fd">author</span>    = {Cui, Xiangxiang and Huang, Tianjin and Wang,
+               Yifang and Hu, Lijie and Yin, Lu},
   <span class="fd">booktitle</span> = {Medical Image Computing and Computer
                Assisted Intervention (MICCAI)},
   <span class="fd">year</span>      = {2026},
-  <span class="fd">note</span>      = {Under Review}
+  <span class="fd">note</span>      = {Accepted by MICCAI 2026}
 }</pre>
     </div>
   </section>
@@ -634,12 +653,12 @@
 
 <script>
 function copyBib() {
-  const text = `@inproceedings{anonymous2026medfmrobust,
+  const text = `@inproceedings{cui2026medfmrobust,
   title     = {MedFM-Robust: Benchmarking Robustness of Medical Foundation Models},
-  author    = {Anonymous},
+  author    = {Cui, Xiangxiang and Huang, Tianjin and Wang, Yifang and Hu, Lijie and Yin, Lu},
   booktitle = {Medical Image Computing and Computer Assisted Intervention (MICCAI)},
   year      = {2026},
-  note      = {Under Review}
+  note      = {Accepted by MICCAI 2026}
 }`;
   navigator.clipboard.writeText(text).then(() => {
     const btn = document.querySelector('.copy-btn');
