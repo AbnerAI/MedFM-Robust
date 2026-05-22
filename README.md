@@ -8,7 +8,7 @@ A comprehensive framework for evaluating the robustness of medical foundation mo
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Paper](https://img.shields.io/badge/Paper-MICCAI%202026%20(under%20review)-green.svg)](#citation)
+[![Paper](https://img.shields.io/badge/Paper-MICCAI%202026%20-green.svg)](https://arxiv.org/pdf/2605.19027)
 
 **Key Highlights:**
 
